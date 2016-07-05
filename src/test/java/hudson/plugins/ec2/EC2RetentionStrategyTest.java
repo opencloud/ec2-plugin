@@ -7,20 +7,33 @@ import hudson.plugins.ec2.util.AmazonEC2FactoryMockImpl;
 import hudson.plugins.ec2.util.MinimumInstanceChecker;
 import hudson.plugins.ec2.util.MinimumNumberOfInstancesTimeRangeConfig;
 import hudson.plugins.ec2.util.PrivateKeyHelper;
+import hudson.security.ACL;
+import hudson.security.AccessControlled;
+import hudson.security.Permission;
 import hudson.slaves.NodeProperty;
 import hudson.model.Executor;
 import hudson.model.Node;
+import hudson.model.Label;
+import hudson.model.Queue;
+import hudson.model.ResourceList;
+import hudson.model.Queue.Executable;
+import hudson.model.Queue.Task;
+import hudson.model.queue.CauseOfBlockage;
 
 import net.sf.json.JSONObject;
+import org.acegisecurity.Authentication;
 import org.junit.Rule;
 import org.junit.Test;
 import org.jvnet.hudson.test.JenkinsRule;
+import jenkins.model.Jenkins;
 
+import javax.annotation.Nonnull;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.Month;
 import java.time.ZoneId;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -30,6 +43,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 public class EC2RetentionStrategyTest {
@@ -67,6 +81,106 @@ public class EC2RetentionStrategyTest {
         }
     }
 
+    @Test
+    public void testRetentionWhenQueueHasWaitingItemForThisNode() throws Exception {
+        EC2RetentionStrategy rs = new EC2RetentionStrategy("-2");
+        EC2Computer computer = computerWithIdleTime(59, 0);
+        final Label selfLabel = computer.getNode().getSelfLabel();
+        final Queue queue = Jenkins.get().getQueue();
+        final Task task = taskForLabel(selfLabel, false);
+        queue.schedule(task, 500);
+        checkRetentionStrategy(rs, computer);
+        assertFalse("Expected computer to be left running", idleTimeoutCalled.get());
+        queue.cancel(task);
+        EC2RetentionStrategy rs2 = new EC2RetentionStrategy("-2");
+        checkRetentionStrategy(rs2, computer);
+        assertTrue("Expected computer to be idled", idleTimeoutCalled.get());
+    }
+
+    @Test
+    public void testRetentionWhenQueueHasBlockedItemForThisNode() throws Exception {
+        EC2RetentionStrategy rs = new EC2RetentionStrategy("-2");
+        EC2Computer computer = computerWithIdleTime(59, 0);
+        final Label selfLabel = computer.getNode().getSelfLabel();
+        final Queue queue = Jenkins.get().getQueue();
+        final Task task = taskForLabel(selfLabel, true);
+        queue.schedule(task, 0);
+        checkRetentionStrategy(rs, computer);
+        assertFalse("Expected computer to be left running", idleTimeoutCalled.get());
+        queue.cancel(task);
+        EC2RetentionStrategy rs2 = new EC2RetentionStrategy("-2");
+        checkRetentionStrategy(rs2, computer);
+        assertTrue("Expected computer to be idled", idleTimeoutCalled.get());
+    }
+
+    private interface AccessControlledTask extends Queue.Task, AccessControlled {
+    }
+
+    private Queue.Task taskForLabel(final Label label, boolean blocked) {
+        final CauseOfBlockage cob = blocked ? new CauseOfBlockage() {
+            @Override
+            public String getShortDescription() {
+                return "Blocked";
+            }
+        } : null;
+        return new AccessControlledTask() {
+            @Nonnull
+            public ACL getACL() {
+                return new ACL() {
+                    public boolean hasPermission(@Nonnull Authentication a, @Nonnull Permission permission) {
+                        return true;
+                    }
+                };
+            }
+            public ResourceList getResourceList() {
+                return null;
+            }
+
+            public Node getLastBuiltOn() {
+                return null;
+            }
+
+            public long getEstimatedDuration() {
+                return -1;
+            }
+
+            public Label getAssignedLabel() {
+                return label;
+            }
+
+            public Executable createExecutable() {
+                return null;
+            }
+
+            public String getDisplayName() {
+                return null;
+            }
+
+            @Override
+            public CauseOfBlockage getCauseOfBlockage() {
+                return cob;
+            }
+
+            public boolean hasAbortPermission() {
+                return false;
+            }
+
+            public String getUrl() {
+                return null;
+            }
+
+            public String getName() {
+                return null;
+            }
+
+            public String getFullDisplayName() {
+                return null;
+            }
+
+            public void checkAbortPermission() {
+            }
+        };
+    }
     private EC2Computer computerWithIdleTime(final int minutes, final int seconds) throws Exception {
         final EC2AbstractSlave slave = new EC2AbstractSlave("name", "id", "description", "fs", 1, null, "label", null, null, "init", "tmpDir", new ArrayList<NodeProperty<?>>(), "remote", "jvm", false, "idle", null, "cloud", false, Integer.MAX_VALUE, null, ConnectionStrategy.PRIVATE_IP, -1) {
             @Override
