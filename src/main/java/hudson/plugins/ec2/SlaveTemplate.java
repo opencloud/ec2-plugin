@@ -135,6 +135,7 @@ import hudson.plugins.ec2.util.*;
 import hudson.XmlFile;
 import hudson.model.listeners.SaveableListener;
 import hudson.security.Permission;
+import hudson.RelativePath;
 import hudson.util.Secret;
 import jenkins.model.Jenkins;
 import jenkins.model.JenkinsLocationConfiguration;
@@ -235,7 +236,7 @@ public class SlaveTemplate implements Describable<SlaveTemplate> {
     private final List<EC2Tag> tags;
 
     public ConnectionStrategy connectionStrategy;
-    
+
     public HostKeyVerificationStrategyEnum hostKeyVerificationStrategy;
 
     public final boolean associatePublicIp;
@@ -355,8 +356,8 @@ public class SlaveTemplate implements Describable<SlaveTemplate> {
         this.customDeviceMapping = customDeviceMapping;
         this.t2Unlimited = t2Unlimited;
 
-        this.hostKeyVerificationStrategy = hostKeyVerificationStrategy != null ? hostKeyVerificationStrategy : HostKeyVerificationStrategyEnum.CHECK_NEW_SOFT; 
-        
+        this.hostKeyVerificationStrategy = hostKeyVerificationStrategy != null ? hostKeyVerificationStrategy : HostKeyVerificationStrategyEnum.CHECK_NEW_SOFT;
+
         readResolve(); // initialize
     }
 
@@ -731,14 +732,14 @@ public class SlaveTemplate implements Describable<SlaveTemplate> {
 
     @DataBoundSetter
     public void setHostKeyVerificationStrategy(HostKeyVerificationStrategyEnum hostKeyVerificationStrategy) {
-        this.hostKeyVerificationStrategy = (hostKeyVerificationStrategy != null) ? hostKeyVerificationStrategy : HostKeyVerificationStrategyEnum.CHECK_NEW_SOFT; 
+        this.hostKeyVerificationStrategy = (hostKeyVerificationStrategy != null) ? hostKeyVerificationStrategy : HostKeyVerificationStrategyEnum.CHECK_NEW_SOFT;
     }
-    
+
     @NonNull
     public HostKeyVerificationStrategyEnum getHostKeyVerificationStrategy() {
         return hostKeyVerificationStrategy != null ? hostKeyVerificationStrategy : HostKeyVerificationStrategyEnum.CHECK_NEW_SOFT;
     }
-    
+
     @Override
     public String toString() {
         return "SlaveTemplate{" +
@@ -1858,9 +1859,11 @@ public class SlaveTemplate implements Describable<SlaveTemplate> {
         }
 
         @RequirePOST
-        public ListBoxModel doFillZoneItems(@QueryParameter boolean useInstanceProfileForCredentials,
-                @QueryParameter String credentialsId, @QueryParameter String region, @QueryParameter String roleArn,
-                @QueryParameter String roleSessionName)
+        public ListBoxModel doFillZoneItems(@QueryParameter @RelativePath("..") boolean useInstanceProfileForCredentials,
+                                            @QueryParameter @RelativePath("..") String credentialsId,
+                                            @QueryParameter @RelativePath("..") String region,
+                                            @QueryParameter @RelativePath("..") String roleArn,
+                                            @QueryParameter @RelativePath("..") String roleSessionName)
                 throws IOException, ServletException {
             checkPermission(EC2Cloud.PROVISION);
             AWSCredentialsProvider credentialsProvider = EC2Cloud.createCredentialsProvider(useInstanceProfileForCredentials, credentialsId, roleArn, roleSessionName, region);
@@ -1904,7 +1907,7 @@ public class SlaveTemplate implements Describable<SlaveTemplate> {
                     .map(s -> FormValidation.ok())
                     .orElse(FormValidation.error("Could not find selected connection strategy"));
         }
-        
+
         public String getDefaultHostKeyVerificationStrategy() {
             // new templates default to the most secure strategy
             return HostKeyVerificationStrategyEnum.CHECK_NEW_HARD.name();
